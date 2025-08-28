@@ -12,9 +12,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
     <style>
         * {
             font-family: 'Kanit', sans-serif;
@@ -352,13 +349,6 @@
                         ระบบปลอดภัย เข้ารหัสข้อมูล SSL
                     </p>
                 </div>
-              <!-- ซ่อนไว้ก็ได้ แล้วค่อยเปิดเฉพาะแอดมิน -->
-              <div style="display:flex; gap:.5rem; margin:.5rem 0;">
-                <button id="btn-change-config">ตั้งค่า/แก้ไข Firebase</button>
-                <button id="btn-view-config">ดูคอนฟิก</button>
-                <button id="btn-reset-config">ลบคอนฟิก (เครื่องนี้)</button>
-              </div>
-
             </div>
         </div>
 
@@ -1385,174 +1375,12 @@
 
     <!-- Firebase SDK -->
     <script type="module">
-          // ✅ ใช้เวอร์ชันที่เสถียร (ถ้าเดิมใช้ 9.22.0 คงไว้เพื่อความเข้ากันได้)
-  import { initializeApp }   from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-  import { getAuth }         from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
-  import { getDatabase }     from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
-
-  const LS_KEY = "firebaseConfig";  // key ใน localStorage
-
-  // --- ตัวช่วย validate ---
-  function validateConfig(cfg) {
-    const required = ["apiKey","authDomain","projectId","appId"];
-    const missing = required.filter(k => !cfg?.[k] || typeof cfg[k] !== "string" || cfg[k].trim() === "");
-    const optional = ["databaseURL","storageBucket","messagingSenderId","measurementId"];
-    return { ok: missing.length === 0, missing, optionalMissing: optional.filter(k => !cfg?.[k]) };
-  }
-
-  // --- หน้าต่างให้วาง JSON (ใช้ SweetAlert2 ถ้ามี; ถ้าไม่มีก็ตกกลับไปใช้ prompt) ---
-  async function promptForConfig(existingText = "") {
-    const sample = `{
-  "apiKey": "YOUR_API_KEY",
-  "authDomain": "YOUR_PROJECT_ID.firebaseapp.com",
-  "databaseURL": "https://YOUR_DB_ID.asia-southeast1.firebasedatabase.app",
-  "projectId": "YOUR_PROJECT_ID",
-  "storageBucket": "YOUR_PROJECT_ID.appspot.com",
-  "messagingSenderId": "YOUR_SENDER_ID",
-  "appId": "YOUR_APP_ID",
-  "measurementId": "G-XXXXXXX"
-}`;
-
-    // ถ้ามี SweetAlert2
-    if (typeof window.Swal !== "undefined") {
-      const { value: text } = await Swal.fire({
-        title: 'วาง Firebase Config (JSON)',
-        input: 'textarea',
-        inputValue: existingText || sample,
-        inputAttributes: { 'aria-label': 'Firebase config JSON' },
-        confirmButtonText: 'บันทึก',
-        cancelButtonText: 'ยกเลิก',
-        showCancelButton: true,
-        inputAutoTrim: false,
-        preConfirm: (value) => {
-          try {
-            const cfg = JSON.parse(value);
-            const res = validateConfig(cfg);
-            if (!res.ok) throw new Error('คีย์ที่จำเป็นขาด: ' + res.missing.join(', '));
-            return value;
-          } catch (err) {
-            Swal.showValidationMessage(err.message);
-          }
-        },
-        allowOutsideClick: () => !Swal.isLoading()
-      });
-      if (!text) throw new Error('ผู้ใช้ยกเลิกการตั้งค่า');
-      localStorage.setItem(LS_KEY, text);
-      return text;
-    }
-
-    // ถ้าไม่มี SweetAlert2 (fallback)
-    const text = prompt("วาง Firebase config (JSON):", existingText || sample);
-    if (!text) throw new Error("ผู้ใช้ยกเลิกหรือไม่ใส่ค่า");
-    try {
-      const cfg = JSON.parse(text);
-      const res = validateConfig(cfg);
-      if (!res.ok) throw new Error("คีย์ที่จำเป็นขาด: " + res.missing.join(", "));
-      localStorage.setItem(LS_KEY, text);
-      return text;
-    } catch (e) {
-      alert("JSON ไม่ถูกต้อง: " + e.message);
-      return await promptForConfig(existingText);
-    }
-  }
-
-  async function ensureFirebaseConfig() {
-    let raw = localStorage.getItem(LS_KEY);
-    if (!raw) {
-      raw = await promptForConfig();
-    }
-    let cfg;
-    try {
-      cfg = JSON.parse(raw);
-    } catch (e) {
-      if (typeof window.Swal !== "undefined") {
-        await Swal.fire({ icon: 'error', title: 'JSON ไม่ถูกต้อง', text: e.message });
-      } else {
-        alert("JSON ไม่ถูกต้อง: " + e.message);
-      }
-      localStorage.removeItem(LS_KEY);
-      return await ensureFirebaseConfig();
-    }
-    const res = validateConfig(cfg);
-    if (!res.ok) {
-      if (typeof window.Swal !== "undefined") {
-        await Swal.fire({ icon: 'error', title: 'คอนฟิกยังไม่ครบ', text: 'ขาด: ' + res.missing.join(', ') });
-      } else {
-        alert("คอนฟิกยังไม่ครบ: " + res.missing.join(", "));
-      }
-      localStorage.removeItem(LS_KEY);
-      return await ensureFirebaseConfig();
-    }
-    return cfg;
-  }
-
-  function wireConfigButtons() {
-    // ปุ่ม “ตั้งค่า/แก้ไข”
-    const btnSet = document.getElementById('btn-change-config');
-    if (btnSet) {
-      btnSet.addEventListener('click', async () => {
-        try {
-          const current = localStorage.getItem(LS_KEY) || "";
-          await promptForConfig(current);
-          location.reload(); // รีโหลดเพื่อให้ init ใหม่ตามคอนฟิก
-        } catch (_) {}
-      });
-    }
-    // ปุ่ม “ดูคอนฟิก”
-    const btnView = document.getElementById('btn-view-config');
-    if (btnView) {
-      btnView.addEventListener('click', () => {
-        const current = localStorage.getItem(LS_KEY);
-        if (typeof window.Swal !== "undefined") {
-          Swal.fire({ title:'ดูคอนฟิก (อ่านอย่างเดียว)', input: 'textarea', inputValue: current || 'ยังไม่ตั้งค่า', showConfirmButton: false });
-        } else {
-          alert(current || "ยังไม่ตั้งค่า");
-        }
-      });
-    }
-    // ปุ่ม “ลบคอนฟิก”
-    const btnReset = document.getElementById('btn-reset-config');
-    if (btnReset) {
-      btnReset.addEventListener('click', async () => {
-        const doReset = typeof window.Swal !== "undefined"
-          ? (await Swal.fire({ icon: 'warning', title: 'ลบคอนฟิกจากเครื่องนี้?', text: 'ต้องวางใหม่ในการใช้งานครั้งถัดไป', showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก' })).isConfirmed
-          : confirm("ลบคอนฟิกจากเครื่องนี้?");
-        if (doReset) {
-          localStorage.removeItem(LS_KEY);
-          location.reload();
-        }
-      });
-    }
-  }
-
-  (async () => {
-    try {
-      const cfg = await ensureFirebaseConfig();
-      // ✅ เริ่มต้น Firebase ด้วยคอนฟิกที่ผู้ใช้เพิ่งตั้งค่า
-      const app = initializeApp(cfg);
-      const auth = getAuth(app);
-      const db   = getDatabase(app);
-
-      // เผื่อโค้ดส่วนอื่นต้องเข้าถึง
-      window.firebaseApp = app;
-      window.firebaseAuth = auth;
-      window.firebaseDb = db;
-
-      wireConfigButtons();
-
-      // ===== โค้ดฟีเจอร์เดิมของคุณวางต่อจากนี้ได้เลย =====
-      // ตัวอย่าง: runApp({ app, auth, db });
-
-      console.log("✅ Firebase initialized:", cfg.projectId);
-    } catch (e) {
-      console.error(e);
-      if (typeof window.Swal !== "undefined") {
-        await Swal.fire({ icon: 'error', title: 'เริ่มระบบไม่สำเร็จ', text: e.message });
-      } else {
-        alert("เริ่มระบบไม่สำเร็จ: " + e.message);
-      }
-    }
-  })();
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut, onAuthStateChanged, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+        import { getDatabase, ref, set, get, push, child, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+        import { firebaseConfig } from "./config.js"; // ใช้คอนฟิกจากไฟล์แยก
+        
+        
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
